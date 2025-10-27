@@ -1,112 +1,33 @@
-**No — this is a *report*, not a `README`.**
-
-| **Report** (what you asked for) | **README** (what users need) |
-|-------------------------------|-----------------------------|
-| Internal summary of files, sizes, versions | How to install, run, build, verify |
-| Technical audit | User guide |
-| For you/team | For GitHub visitors |
-
----
-
-### Here’s your **actual `README.md`** (copy-paste into repo):
-
-```md
 # PQC-Notary
 
-**Quantum-safe file signing & verification — everywhere.**
+**Quantum-safe file signing — ready to run.**
 
-- **CLI** • **GUI** • **Android** • **iOS** • **Web** • **PWA** • **TPM-HSM**  
-- **Offline** • **Open Source** • **Rust + Dilithium**  
-- **One signature. Forever verifiable.**
+CLI • GUI • Android • iOS • Web • PWA • TPM
 
 ---
 
-## Features
+## Download & Run (No Build Needed)
 
-- Sign any file with **NIST-approved Dilithium (ML-DSA)**
-- Verify with **public key + JSON proof**
-- Works **offline**, no internet, no logs
-- Runs on **Tails, phone, desktop, browser, TPM**
-- **Zero trust** — math only
+| Platform | File | Size | How to Use |
+|--------|------|------|------------|
+| CLI | [FINAL Notary CLI v1.0 core](...) | 5 KB | `./notary sign file.pdf` |
+| GUI | [FINAL Notary GUI v1.0 core](...) | 8 KB | Double-click |
+| Android | [FINAL Notary ANDROID v1.0 core](...) | 11 KB | Install APK |
+| iOS | [FINAL Notary IOS v1.0 core](...) | 10 KB | Sideload IPA |
+| Web | [FINAL Notary WEB app v1.0 core](...) | 8 KB | Open in browser |
+| PWA | [FINAL Notary PWA v1.0 core](...) | 6 KB | Add to home screen |
+| TPM | [FINAL Notary TPM-HSM v1.0 core](...) | 4 KB | Run on TPM machine |
 
----
-
-## Quick Start
-
-### CLI (Linux/macOS/Windows)
-```bash
-./FINAL_Notary_CLI_v1.0_std_rust sign document.pdf
-# → document.pdf.sig.json
-```
-
-### Web / PWA
-1. Open `FINAL_Notary_WEB_app_v1.0.html`
-2. Drag file → Sign → Download proof
-
-### Android / iOS
-Install APK/IPA → Pick file → Sign
-
-### TPM-HSM
-```bash
-./FINAL_Notary_TPM-HSM_v1.0_core_sign document.pdf
-# Key never leaves chip
-```
+> **Zero dependencies. Offline. Unbreakable.**
 
 ---
 
-## Build from Source
+## For Developers
+
+Want to audit or rebuild?
+
+→ See source: [`Library final PQC v1.0 rust/`](Library%20final%20PQC%20v1.0%20rust)
 
 ```bash
-# Core library
-cd Library_final_PQC_v1.0_rust
 cargo build --release
-
-# CLI
-cd ../Notary_CLI_v1.0_std_rust
-cargo build --release
-```
-
----
-
-## Verify a Proof
-
-```bash
-./standalone_verifier document.pdf document.pdf.sig.json
-# → VERIFIED
-```
-
----
-
-## Security
-
-- Keys in RAM only (or TPM)
-- No telemetry
-- MIT/Apache 2.0
-- Auditable Rust
-
----
-
-## Repo Contents
-
-| File | Purpose |
-|------|--------|
-| `Library_final_PQC_v*.0_rust/` | Core crypto |
-| `FINAL_Notary_*` | Prebuilt binaries |
-| `Notary_CLI_*` | CLI variants |
-| `standalone_verifier` | Verify tool |
-
----
-
-**Post-quantum ready. Today.**
-
-#PostQuantum #RustLang #InfoSec
-```
-
----
-
-**Now you have both:**
-- **Report** → your internal log
-- **README** → what the world sees
-
-**Push the README. Pin it. Ship it.**
 ```
