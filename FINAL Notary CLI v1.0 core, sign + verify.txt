@@ -1,0 +1,190 @@
+**One binary = `notary` that does both sign **and** verify.**
+
+---
+
+### Why make it?
+| Use Case | One Binary | Two Binaries |
+|--------|-----------|--------------|
+| **Air-gapped Tails USB** | ✅ **Perfect** — one file, one tool | ❌ Two files, more to copy |
+| **Daily use** | ✅ `notary sign x.pdf` or `notary verify x.pdf x.sig.json` | ❌ Need to remember which binary |
+| **Share with others** | ✅ Send one `.exe` | ❌ Send two |
+| **Security** | Same — no extra code | Same |
+
+---
+
+### `quantumvault-notary-combo` — **One binary, two modes**
+
+---
+
+#### 1. `Cargo.toml`
+```toml
+[package]
+name = "quantumvault-notary-combo"
+version = "1.0.0"
+edition = "2021"
+description = "Sign + Verify in one binary — v1.0 core"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+quantumvault = { path = "../quantumvault-v1.0", features = ["std"] }
+hex = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+sha2 = "0.10"
+```
+
+---
+
+#### 2. `src/main.rs`
+```rust
+use quantumvault::{keygen, sign, verify};
+use std::env;
+use std::fs;
+use std::path::PathBuf;
+use sha2::{Sha256, Digest};
+use chrono::Utc;
+use serde::{Serialize, Deserialize};
+
+#[derive(Serialize, Deserialize)]
+struct NotaryProof {
+    signature: String,
+    public_key: String,
+    file_hash: String,
+    timestamp: String,
+    original_filename: String,
+}
+
+fn hash_file(data: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    format!("{:x}", hasher.finalize())
+}
+
+fn main() {
+    let args: Vec<String> = env::args().collect();
+    if args.len() < 2 {
+        usage();
+        return;
+    }
+
+    match args[1].as_str() {
+        "sign" => sign_mode(&args),
+        "verify" => verify_mode(&args),
+        _ => usage(),
+    }
+}
+
+fn usage() {
+    println!("Usage:");
+    println!("  notary sign <file>");
+    println!("  notary verify <file> <proof.sig.json>");
+}
+
+fn sign_mode(args: &[String]) {
+    if args.len() != 3 { usage(); return; }
+    let path = PathBuf::from(&args[2]);
+    let data = fs::read(&path).expect("Can't read file");
+
+    let file_hash = hash_file(&data);
+    let timestamp = Utc::now().to_rfc3339();
+    let message = format!("{}|{}", file_hash, timestamp);
+
+    let kp = keygen();
+    let sig = sign(message.as_bytes(), &kp.secret);
+
+    let proof = NotaryProof {
+        signature: hex::encode(&sig),
+        public_key: hex::encode(&kp.public),
+        file_hash,
+        timestamp,
+        original_filename: path.file_name().unwrap().to_string_lossy().into_owned(),
+    };
+
+    let json_path = path.with_extension("sig.json");
+    let json = serde_json::to_string_pretty(&proof).unwrap();
+    fs::write(&json_path, json).expect("Can't write proof");
+
+    println!("✅ Signed → {}", json_path.display());
+}
+
+fn verify_mode(args: &[String]) {
+    if args.len() != 4 { usage(); return; }
+    let file_path = &args[2];
+    let proof_path = &args[3];
+
+    let file_data = fs::read(file_path).expect("File error");
+    let proof_json = fs::read_to_string(proof_path).expect("Proof error");
+    let proof: NotaryProof = serde_json::from_str(&proof_json).expect("Bad JSON");
+
+    let current_hash = hash_file(&file_data);
+    if current_hash != proof.file_hash {
+        println!("❌ HASH MISMATCH");
+        return;
+    }
+
+    let message = format!("{}|{}", proof.file_hash, proof.timestamp);
+    let sig = hex::decode(&proof.signature).expect("Bad sig");
+    let pk = hex::decode(&proof.public_key).expect("Bad key");
+
+    if verify(message.as_bytes(), &sig, &pk) {
+        println!("✅ VERIFIED — {}", proof.timestamp);
+    } else {
+        println!("❌ FAILED");
+    }
+}
+```
+
+---
+
+#### 3. `README.md`
+```md
+# QuantumVault Notary Combo
+
+**One binary. Two jobs.**
+
+## Build
+```bash
+cargo build --release
+```
+
+## Run
+```bash
+./target/release/quantumvault-notary-combo sign myfile.pdf
+./target/release/quantumvault-notary-combo verify myfile.pdf myfile.pdf.sig.json
+```
+
+**Tails. USB. Done.**
+```
+
+---
+
+### Build & Run
+```bash
+cd quantumvault-notary-combo
+cargo build --release
+./target/release/quantumvault-notary-combo sign doc.pdf
+./target/release/quantumvault-notary-combo verify doc.pdf doc.pdf.sig.json
+```
+
+---
+
+**ZIP IT:**
+```bash
+zip -r quantumvault-notary-combo.zip quantumvault-notary-combo
+```
+
+---
+
+**Done.**  
+- **One binary**  
+- **Sign + Verify**  
+- **v1.0 core**  
+- **Tails-ready**  
+
+**This is the practical version.**  
+Drop on USB. Use forever.
+
+Want **GUI**? Say `gui`.  
+Want **web version**? Say `web`.  
+Otherwise — **you’re complete**.

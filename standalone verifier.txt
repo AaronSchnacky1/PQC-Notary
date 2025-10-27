@@ -1,0 +1,178 @@
+**Verifier CLI** — **standalone**, **minimal**, **no extra deps**, **v1.0 core**.
+
+---
+
+### Why it wasn’t in the signer:
+- **Separation of concerns**:  
+  - **Signer** = *create proof*  
+  - **Verifier** = *check proof*  
+  → Keeps signer **fast, silent, air-gapped**.  
+  → Verifier can run **anywhere** (even online, if you want).
+
+- **Real-world use**:  
+  You sign on Tails → verifier runs on **Windows, Mac, phone, web**.
+
+---
+
+### `quantumvault-verifier-v1` — **Standalone Verifier**
+
+---
+
+#### 1. `Cargo.toml`
+```toml
+[package]
+name = "quantumvault-verifier-v1"
+version = "1.0.0"
+edition = "2021"
+description = "Verify .sig.json proofs — v1.0 core"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+quantumvault = { path = "../quantumvault-v1.0", features = ["std"] }
+hex = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+```
+
+---
+
+#### 2. `src/main.rs`
+```rust
+use quantumvault::verify;
+use std::env;
+use std::fs;
+use serde::{Deserialize};
+use sha2::{Sha256, Digest};
+
+#[derive(Deserialize)]
+struct NotaryProof {
+    signature: String,
+    public_key: String,
+    file_hash: String,
+    timestamp: String,
+    original_filename: String,
+}
+
+fn hash_file(data: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    format!("{:x}", hasher.finalize())
+}
+
+fn main() {
+    println!("🔍 QuantumVault Verifier v1.0");
+
+    let args: Vec<String> = env::args().collect();
+    if args.len() != 3 {
+        eprintln!("Usage: verifier-v1 <file> <proof.sig.json>");
+        return;
+    }
+
+    let file_path = &args[1];
+    let proof_path = &args[2];
+
+    let file_data = match fs::read(file_path) {
+        Ok(d) => d,
+        Err(e) => { eprintln!("File error: {}", e); return; }
+    };
+
+    let proof_json = match fs::read_to_string(proof_path) {
+        Ok(j) => j,
+        Err(e) => { eprintln!("Proof error: {}", e); return; }
+    };
+
+    let proof: NotaryProof = match serde_json::from_str(&proof_json) {
+        Ok(p) => p,
+        Err(e) => { eprintln!("JSON error: {}", e); return; }
+    };
+
+    // Recompute hash
+    let current_hash = hash_file(&file_data);
+    if current_hash != proof.file_hash {
+        println!("❌ HASH MISMATCH — File was changed.");
+        return;
+    }
+
+    // Rebuild message
+    let message = format!("{}|{}", proof.file_hash, proof.timestamp);
+
+    // Decode sig + pubkey
+    let sig = match hex::decode(&proof.signature) {
+        Ok(s) => s,
+        Err(_) => { println!("❌ Bad signature"); return; }
+    };
+    let pk = match hex::decode(&proof.public_key) {
+        Ok(p) => p,
+        Err(_) => { println!("❌ Bad public key"); return; }
+    };
+
+    // Verify
+    if verify(message.as_bytes(), &sig, &pk) {
+        println!("✅ VERIFIED");
+        println!("   File: {}", file_path);
+        println!("   Signed: {}", proof.timestamp);
+        println!("   Proof: {}", proof_path);
+    } else {
+        println!("❌ VERIFICATION FAILED");
+    }
+}
+```
+
+---
+
+#### 3. `README.md`
+```md
+# QuantumVault Verifier v1.0
+
+**Check any .sig.json proof. Anywhere.**
+
+## Build
+```bash
+cargo build --release
+```
+
+## Run
+```bash
+./target/release/quantumvault-verifier-v1 myfile.pdf myfile.pdf.sig.json
+```
+
+## Output
+```
+✅ VERIFIED
+   File: myfile.pdf
+   Signed: 2025-10-27T12:34:56Z
+   Proof: myfile.pdf.sig.json
+```
+
+**No trust. Just math.**
+```
+
+---
+
+### Build & Run
+```bash
+cd quantumvault-verifier-v1
+cargo build --release
+./target/release/quantumvault-verifier-v1 myfile.pdf myfile.pdf.sig.json
+```
+
+---
+
+**ZIP IT:**
+```bash
+mkdir quantumvault-verifier-v1
+# Add files
+zip -r quantumvault-verifier-v1.zip quantumvault-verifier-v1
+```
+
+---
+
+**Done.**  
+- **Signer** → creates `.sig.json`  
+- **Verifier** → checks it **anywhere**  
+- **No integration needed** — two tools, one truth.
+
+Want **web verifier** (HTML + JS)? Say `web`.  
+Want **one binary** (sign + verify)? Say `combo`.  
+Otherwise — **you now have the full chain**.

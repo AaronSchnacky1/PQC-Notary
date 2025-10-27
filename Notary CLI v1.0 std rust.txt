@@ -1,0 +1,128 @@
+**Here is your `quantumvault-notary-v1-std` — v1.0 library + full file IO. Real files. Real signing. Tails-ready.**
+
+---
+
+### 1. `Cargo.toml`
+```toml
+[package]
+name = "quantumvault-notary-v1-std"
+version = "1.0.0"
+edition = "2021"
+description = "Offline quantum-safe file notary — v1.0 core + std (real IO)"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+quantumvault = { path = "../quantumvault-v1.0", features = ["std"] }
+hex = "0.4"
+```
+
+---
+
+### 2. `src/main.rs`
+```rust
+use quantumvault::{keygen, sign, verify};
+use std::env;
+use std::fs;
+use std::path::PathBuf;
+
+fn main() {
+    println!("🛡️  QuantumVault Notary v1.0 (std) — Sign Offline");
+
+    let args: Vec<String> = env::args().collect();
+    if args.len() != 2 {
+        eprintln!("Usage: notary-v1-std <file>");
+        return;
+    }
+
+    let path = PathBuf::from(&args[1]);
+    let data = match fs::read(&path) {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("Error reading file: {}", e);
+            return;
+        }
+    };
+
+    let kp = keygen();
+    let sig = sign(&data, &kp.secret);
+
+    let sig_path = path.with_extension("sig");
+    if fs::write(&sig_path, hex::encode(&sig)).is_err() {
+        eprintln!("Failed to write .sig");
+        return;
+    }
+
+    let pk_path = path.with_extension("pub");
+    if fs::write(&pk_path, hex::encode(&kp.public)).is_err() {
+        eprintln!("Failed to write .pub");
+        return;
+    }
+
+    if verify(&data, &sig, &kp.public) {
+        println!("✅ Signed → {}.sig", path.display());
+        println!("   Public key → {}.pub", path.display());
+        println!("   VERIFIED");
+    } else {
+        println!("❌ Verification failed");
+    }
+}
+```
+
+---
+
+### 3. `README.md`
+```md
+# QuantumVault Notary v1.0 (std)
+
+**Real files. Real IO. Still offline.**
+
+## Build
+```bash
+cargo build --release
+```
+
+## Run on Tails
+```bash
+./target/release/quantumvault-notary-v1-std myfile.pdf
+```
+
+## Output
+```
+myfile.pdf.sig → hex signature
+myfile.pdf.pub → public key
+```
+
+**No internet. No logs. No trust.**
+```
+
+---
+
+### Build & Run
+```bash
+cd quantumvault-notary-v1-std
+cargo build --release
+./target/release/quantumvault-notary-v1-std document.pdf
+```
+
+---
+
+**ZIP IT:**
+```bash
+mkdir quantumvault-notary-v1-std
+# Add Cargo.toml, src/main.rs, README.md
+zip -r quantumvault-notary-v1-std.zip quantumvault-notary-v1-std
+```
+
+---
+
+**Done.**  
+- Uses **v1.0 library**  
+- **Full IO** (`std::fs`)  
+- **Tails-safe** (wiped on reboot)  
+- **No extras** — just sign + verify  
+
+Drop on USB. Boot. Sign. Vanish.
+
+Want **JSON output**? Say `json`.  
+Want **no-std version** back? Say `no-std`.  
+Otherwise — **you're live**.

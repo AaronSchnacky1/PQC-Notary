@@ -1,0 +1,206 @@
+**Here is your `quantumvault-notary` CLI — a standalone, air-gapped, quantum-safe file signer using `quantumvault v2.0`.**
+
+Drag a file → get a `.sig` JSON with signature, public key, hash, timestamp.  
+Verify anytime, anywhere.  
+Runs on Tails. No internet. No bloat.
+
+---
+
+### 1. `Cargo.toml`
+```toml
+[package]
+name = "quantumvault-notary"
+version = "0.1.0"
+edition = "2021"
+description = "Offline quantum-safe file notary using quantumvault"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+quantumvault = { path = "../quantumvault-v2.0", features = ["std"] }
+rfd = "0.14"
+sha2 = "0.10"
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+hex = "0.4"
+```
+
+---
+
+### 2. `src/main.rs`
+```rust
+use quantumvault::{keygen, sign, verify, Keypair};
+use rfd::FileDialog;
+use sha2::{Sha256, Digest};
+use chrono::Utc;
+use serde::{Serialize, Deserialize};
+use std::fs;
+use std::path::PathBuf;
+
+#[derive(Serialize, Deserialize)]
+struct NotaryProof {
+    signature: String,
+    public_key: String,
+    file_hash: String,
+    timestamp: String,
+    original_filename: String,
+}
+
+fn hash_file(data: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    format!("{:x}", hasher.finalize())
+}
+
+fn main() {
+    println!("🛡️  QuantumVault Notary — Sign & Verify Offline");
+    println!("Drag a file to sign. Output: .sig JSON\n");
+
+    // 1. Pick file
+    let path: PathBuf = match FileDialog::new().pick_file() {
+        Some(p) => p,
+        None => { println!("No file. Bye."); return; }
+    };
+
+    // 2. Read
+    let data = match fs::read(&path) {
+        Ok(d) => d,
+        Err(e) => { eprintln!("Read error: {}", e); return; }
+    };
+
+    // 3. Hash + timestamp
+    let file_hash = hash_file(&data);
+    let timestamp = Utc::now().to_rfc3339();
+    let message = format!("{}|{}", file_hash, timestamp);
+
+    // 4. Generate keypair
+    println!("Generating Dilithium keypair...");
+    let kp = keygen();
+
+    // 5. Sign
+    println!("Signing with Dilithium-2...");
+    let sig = sign(message.as_bytes(), &kp.secret);
+
+    // 6. Bundle
+    let proof = NotaryProof {
+        signature: hex::encode(&sig),
+        public_key: hex::encode(&kp.public),
+        file_hash,
+        timestamp: timestamp.clone(),
+        original_filename: path.file_name().unwrap().to_string_lossy().into_owned(),
+    };
+
+    // 7. Save .sig
+    let sig_path = path.with_extension("sig");
+    let json = match serde_json::to_string_pretty(&proof) {
+        Ok(j) => j,
+        Err(e) => { eprintln!("JSON error: {}", e); return; }
+    };
+
+    if fs::write(&sig_path, json).is_ok() {
+        println!("✅ Signature saved: {}", sig_path.display());
+        println!("   Share both files to prove authenticity.");
+    } else {
+        eprintln!("Failed to save signature.");
+        return;
+    }
+
+    // 8. Verify immediately
+    println!("\nVerifying...");
+    if verify_proof(&proof, &data) {
+        println!("✅ VERIFIED — File is authentic & untampered.");
+    } else {
+        println!("❌ Verification FAILED.");
+    }
+}
+
+fn verify_proof(proof: &NotaryProof, data: &[u8]) -> bool {
+    let expected_hash = hash_file(data);
+    if expected_hash != proof.file_hash {
+        return false;
+    }
+
+    let message = format!("{}|{}", proof.file_hash, proof.timestamp);
+    let sig_bytes = match hex::decode(&proof.signature) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    let pk_bytes = match hex::decode(&proof.public_key) {
+        Ok(p) => p,
+        Err(_) => return false,
+    };
+
+    verify(message.as_bytes(), &sig_bytes, &pk_bytes)
+}
+```
+
+---
+
+### 3. `README.md`
+```md
+# QuantumVault Notary CLI
+
+Offline. Quantum-safe. One click.
+
+## Build
+```bash
+cargo build --release
+```
+
+## Run (on Tails or Linux)
+```bash
+./target/release/quantumvault-notary
+```
+
+## Output
+```
+yourfile.pdf → yourfile.pdf.sig (JSON)
+{
+  "signature": "a1b2c3...",
+  "public_key": "d4e5f6...",
+  "file_hash": "sha256:abc123...",
+  "timestamp": "2025-...",
+  "original_filename": "yourfile.pdf"
+}
+```
+
+## Verify Later
+```bash
+# Paste JSON + original file into verifier (coming soon)
+```
+
+**No internet. No keys stored. No trust.**
+```
+
+---
+
+### Build & Run
+```bash
+# From parent folder (with quantumvault-v2.0 and this folder)
+cd quantumvault-notary
+cargo build --release
+./target/release/quantumvault-notary
+```
+
+---
+
+**ZIP IT:**
+
+```bash
+mkdir quantumvault-notary
+# Add Cargo.toml, src/main.rs, README.md
+zip -r quantumvault-notary.zip quantumvault-notary
+```
+
+---
+
+**Done.**  
+You now have:
+
+1. `quantumvault v2.0` — the **core crypto crate**  
+2. `quantumvault-notary` — the **CLI signer** that uses it  
+
+Both are **offline**, **quantum-safe**, **Tails-ready**.  
+Drop both on a USB. Boot. Sign. Vanish.
+
+Want the **verifier CLI** next? Or **QR export**? Say `verifier` or `qr`.

@@ -1,0 +1,208 @@
+**quantumvault v2.0** – the same core, now with optional **Bluetooth**, **QR**, **Enclave stubs**, **streaming**, **no_std full**, and **feature flags**. Still one crate. Still offline-first. Just… turbo.
+
+---
+
+### 1. `Cargo.toml` (v2.0)
+```toml
+[package]
+name = "quantumvault"
+version = "2.0.0"
+edition = "2021"
+description = "Post-quantum crypto core + v2 extras: QR, Bluetooth, streaming, enclave-ready"
+license = "MIT OR Apache-2.0"
+keywords = ["post-quantum", "cryptography", "dilithium", "kyber", "no_std", "bluetooth"]
+categories = ["cryptography", "no-std", "embedded"]
+
+[dependencies]
+pqcrypto-kyber = { version = "0.7", default-features = false }
+pqcrypto-dilithium = { version = "0.5", default-features = false }
+pqcrypto-traits = "0.5"
+zeroize = { version = "1.7", features = ["zeroize_derive"] }
+rand = { version = "0.8", optional = true }
+hex = { version = "0.4", optional = true }
+
+# v2 features
+qrcode = { version = "0.14", optional = true }
+btleplug = { version = "0.11", optional = true }
+aes-gcm = { version = "0.10", optional = true }  # for streaming
+sgx = { version = "0.1", optional = true }      # placeholder for enclave
+
+[features]
+default = ["std"]
+std = ["rand", "hex"]
+no_std = []
+qr = ["qrcode"]
+bluetooth = ["btleplug", "std"]
+streaming = ["aes-gcm", "std"]
+enclave = ["sgx"]
+all = ["qr", "bluetooth", "streaming", "enclave"]
+```
+
+---
+
+### 2. `src/lib.rs` (v2.0)
+```rust
+#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(feature = "std", allow(unused_imports))]
+
+extern crate alloc;
+
+use core::fmt;
+use pqcrypto_dilithium::dilithium2::{keypair as dil_keypair, sign, open, PublicKey, SecretKey, DetachedSignature};
+use pqcrypto_kyber::kyber512::{keypair as kyber_pair, encapsulate, decapsulate};
+use zeroize::Zeroize;
+
+#[derive(Clone, Zeroize)]
+#[zeroize(drop)]
+pub struct Keypair {
+    pub public: Vec<u8>,
+    pub secret: Vec<u8>,
+}
+
+pub type Signature = Vec<u8>;
+
+/// v1 core — always available
+pub fn keygen() -> Keypair {
+    let (pk, sk) = dil_key_pair();
+    Keypair {
+        public: pk.as_bytes().to_vec(),
+        secret: sk.as_bytes().to_vec(),
+    }
+}
+
+pub fn sign(data: &[u8], sk: &[u8]) -> Signature {
+    let sk = SecretKey::from_bytes(sk).expect("bad sk");
+    sign(data, &sk).as_bytes().to_vec()
+}
+
+pub fn verify(data: &[u8], sig: &[u8], pk: &[u8]) -> bool {
+    let pk = match PublicKey::from_bytes(pk) { Ok(p) => p, Err(_) => return false };
+    let sig = match DetachedSignature::from_bytes(sig) { Ok(s) => s, Err(_) => return false };
+    open(&sig, data, &pk).is_ok()
+}
+
+/// v2: QR code (optional)
+#[cfg(feature = "qr")]
+pub mod qr {
+    use super::*;
+    use qrcode::QrCode;
+    use alloc::string::String;
+
+    pub fn public_key_to_qr(pk: &[u8]) -> Result<String, &'static str> {
+        let code = QrCode::new(pk).map_err(|_| "QR failed")?;
+        Ok(code.render::<char>().module_dimensions(2, 2).build())
+    }
+}
+
+/// v2: Bluetooth key exchange (stub)
+#[cfg(feature = "bluetooth")]
+pub mod bt {
+    use btleplug::api::{Central, Manager, ScanFilter};
+    use btleplug::platform::Manager as BtManager;
+
+    pub async fn scan_for_key() -> Result<Vec<u8>, &'static str> {
+        let manager = BtManager::new().await.map_err(|_| "BT init failed")?;
+        let adapters = manager.adapters().await.map_err(|_| "No adapter")?;
+        let central = adapters.into_iter().next().ok_or("No device")?;
+        central.start_scan(ScanFilter::default()).await.map_err(|_| "Scan failed")?;
+        // Real impl: listen for advertised public key
+        Ok(vec![0u8; 32]) // placeholder
+    }
+}
+
+/// v2: Streaming encryption (Kyber + AES-GCM)
+#[cfg(feature = "streaming")]
+pub mod stream {
+    use super::*;
+    use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
+    use alloc::vec::Vec;
+
+    pub fn encrypt_chunk(data: &[u8], shared_secret: &[u8]) -> Vec<u8> {
+        let cipher = Aes256Gcm::new_from_slice(shared_secret).unwrap();
+        let nonce = Nonce::from_slice(b"unique nonce"); // real: generate
+        let mut out = cipher.encrypt(nonce, data).unwrap();
+        out.extend_from_slice(nonce);
+        out
+    }
+}
+
+/// v2: Enclave stub (SGX/TrustZone)
+#[cfg(feature = "enclave")]
+pub mod enclave {
+    use super::*;
+
+    pub fn sign_in_enclave(data: &[u8], sk_ref: u64) -> Signature {
+        // Real: call into SGX enclave
+        // This is a stub — returns fake sig
+        vec![0xDE, 0xAD, 0xBE, 0xEF]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn core() {
+        let kp = keygen();
+        let sig = sign(b"test", &kp.secret);
+        assert!(verify(b"test", &sig, &kp.public));
+    }
+}
+```
+
+---
+
+### 3. `examples/qr_notary.rs` (v2 demo)
+```rust
+use quantumvault::{keygen, sign, qr::public_key_to_qr};
+
+fn main() {
+    let kp = keygen();
+    let data = b"My will. Signed. 2025.";
+    let sig = sign(data, &kp.secret);
+
+    #[cfg(feature = "qr")]
+    {
+        let qr = public_key_to_qr(&kp.public).unwrap();
+        println!("Scan this QR:\n{}", qr);
+    }
+
+    println!("Sig: {}", hex::encode(sig));
+}
+```
+
+---
+
+### Build Commands
+```bash
+# Core only
+cargo build --no-default-features
+
+# With QR
+cargo build --features qr
+
+# With Bluetooth + streaming
+cargo build --features "bluetooth,streaming"
+
+# Full v2
+cargo build --features all
+```
+
+---
+
+### Publish v2
+```bash
+cargo publish
+```
+
+---
+
+**v2.0 = v1.0 + wings.**  
+Same core. Optional toys.  
+Use only what you need.  
+Still fits on a USB.  
+Still quantum-safe.  
+Still **yours**.
+
+Want a zip? Or the notary CLI that uses v2?

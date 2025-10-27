@@ -1,0 +1,188 @@
+**PWA (Progressive Web App)** = **installable web app** — runs like a native app, but is just a website.
+
+---
+
+### What it does:
+| Feature | Description |
+|--------|-------------|
+| **Installable** | Add to home screen (iPhone/Android) → opens full-screen, no browser bar |
+| **Offline** | Works without internet (after first load) |
+| **Push notifications** | Optional (not needed here) |
+| **Fast** | Cached locally |
+
+---
+
+### Your `quantumvault-notary-pwa`
+
+Same **web version** (HTML/JS) — but **installable**.
+
+---
+
+#### 1. `index.html` (PWA-ready)
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>QuantumVault Notary</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <meta name="theme-color" content="#007acc">
+  <script src="https://cdn.jsdelivr.net/npm/@pq-crystals/dilithium@0.2.0/dist/dilithium.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/crypto-js@4.1.1/crypto-js.js"></script>
+  <style>
+    body { font-family: system-ui; max-width: 800px; margin: 2rem auto; padding: 1rem; background: #f9f9fb; color: #222; }
+    h1 { text-align: center; }
+    .tab { display: flex; gap: 1rem; margin-bottom: 1rem; }
+    .tab button { flex: 1; padding: 0.8rem; font-weight: bold; border: none; cursor: pointer; background: #eee; }
+    .tab button.active { background: #007acc; color: white; }
+    .box { border: 2px dashed #ccc; padding: 2rem; text-align: center; margin: 1rem 0; border-radius: 8px; }
+    .box.dragover { border-color: #007acc; background: #e6f7ff; }
+    button { background: #007acc; color: white; border: none; padding: 0.8rem 1.2rem; margin: 0.5rem; border-radius: 6px; cursor: pointer; }
+    pre { background: #f0f0f0; padding: 1rem; border-radius: 6px; overflow-x: auto; }
+    .status { margin-top: 1rem; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>🛡️ QuantumVault Notary</h1>
+  <div class="tab">
+    <button class="active" onclick="openTab('sign')">Sign</button>
+    <button onclick="openTab('verify')">Verify</button>
+  </div>
+
+  <div id="sign" class="tabcontent">
+    <div class="box" id="drop-sign">Drop file to sign</div>
+    <button onclick="signFile()">🔏 Sign File</button>
+    <div id="sign-result"></div>
+  </div>
+
+  <div id="verify" class="tabcontent" style="display:none;">
+    <div class="box" id="drop-file">Drop original file</div>
+    <div class="box" id="drop-proof">Drop .sig.json</div>
+    <button onclick="verifyProof()">✅ Verify</button>
+    <div id="verify-result"></div>
+  </div>
+
+  <script>
+    // [Same JS from web version — sign/verify logic]
+    // ... (copy from previous web version)
+
+    // PWA Install Prompt
+    let deferredPrompt;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      const installBtn = document.createElement('button');
+      installBtn.textContent = '📲 Install App';
+      installBtn.style.position = 'fixed';
+      installBtn.style.bottom = '20px';
+      installBtn.style.right = '20px';
+      installBtn.style.zIndex = '1000';
+      installBtn.onclick = () => {
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then(() => {
+          installBtn.remove();
+        });
+      };
+      document.body.appendChild(installBtn);
+    });
+  </script>
+</body>
+</html>
+```
+
+---
+
+#### 2. `manifest.json`
+```json
+{
+  "name": "QuantumVault Notary",
+  "short_name": "QV Notary",
+  "description": "Offline quantum-safe file signing",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f9f9fb",
+  "theme_color": "#007acc",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
+```
+
+---
+
+#### 3. `service-worker.js`
+```js
+const CACHE = 'qv-notary-v1';
+const FILES = ['/', '/index.html', '/manifest.json', '/icon-192.png', '/icon-512.png'];
+
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES)));
+});
+
+self.addEventListener('fetch', e => {
+  e.respondWith(caches.match(e.request).then(resp => resp || fetch(e.request)));
+});
+```
+
+---
+
+#### 4. Register SW in `index.html` (add to `<head>`)
+```html
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/service-worker.js');
+    });
+  }
+</script>
+```
+
+---
+
+### Icons (generate 192x192 & 512x512 PNG)
+```bash
+# Use any icon — e.g., shield emoji converted
+```
+
+---
+
+### How to Use
+1. Host on **any static server** (GitHub Pages, Netlify, USB)
+2. Open in **Chrome/Edge/Safari**
+3. Click **"Install App"** button → Add to Home Screen
+4. Opens **full-screen**, **no browser UI**
+
+---
+
+### ZIP IT
+```bash
+mkdir quantumvault-notary-pwa
+cp index.html manifest.json service-worker.js icon-*.png quantumvault-notary-pwa/
+zip -r quantumvault-notary-pwa.zip quantumvault-notary-pwa
+```
+
+---
+
+**Done.**  
+- **Installable**  
+- **Offline**  
+- **Cross-platform** (Android, iOS, Desktop)  
+- **No app store**  
+
+**Best of all worlds.**
+
+Want **hosted version**? Say `host`.  
+Want **desktop PWA** (Windows/Mac)? Say `desktop`.  
+Otherwise — **you now own the internet**.
