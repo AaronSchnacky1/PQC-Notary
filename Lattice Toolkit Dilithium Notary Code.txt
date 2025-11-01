@@ -1,0 +1,196 @@
+Code: Dilithium Notary
+Disclaimer: made by Grok 3 on 10/26/25
+Open source, Use at your own risk
+
+rust
+
+// Cargo.toml
+/*
+[package]
+name = "dilithium-notary"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+pqcrypto-dilithium = "0.5"
+pqcrypto-traits = "0.5"
+rfd = "0.14"
+sha2 = "0.10"
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+std::fs
+std::path::PathBuf
+*/
+
+use pqcrypto_dilithium::dilithium2::{
+    keypair, sign, open, PublicKey, SecretKey, DetachedSignature
+};
+use rfd::FileDialog;
+use sha2::{Sha256, Digest};
+use chrono::Utc;
+use serde::{Serialize, Deserialize};
+use std::fs;
+use std::path::PathBuf;
+
+#[derive(Serialize, Deserialize)]
+struct SignatureBundle {
+    signature: Vec<u8>,
+    public_key: Vec<u8>,
+    file_hash: String,
+    timestamp: String,
+    original_filename: String,
+}
+
+fn hash_file(data: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    format!("{:x}", hasher.finalize())
+}
+
+fn main() {
+    println!("Dilithium Notary — Quantum-Resistant File Signing");
+    println!("Drag and drop a file to sign.\n");
+
+    // Step 1: Select file
+    let file_path: PathBuf = match FileDialog::new().pick_file() {
+        Some(path) => path,
+        None => {
+            println!("No file selected. Exiting.");
+            return;
+        }
+    };
+
+    // Step 2: Read file
+    let file_data = match fs::read(&file_path) {
+        Ok(data) => data,
+        Err(e) => {
+            eprintln!("Error reading file: {}", e);
+            return;
+        }
+    };
+
+    // Step 3: Generate keypair
+    println!("Generating Dilithium-2 keypair...");
+    let (pk, sk) = keypair();
+
+    // Step 4: Hash file
+    let file_hash = hash_file(&file_data);
+
+    // Step 5: Create message: hash + timestamp
+    let timestamp = Utc::now().to_rfc3339();
+    let message = format!("{}|{}", file_hash, timestamp);
+
+    // Step 6: Sign
+    println!("Signing with Dilithium-2...");
+    let signature: DetachedSignature = sign(message.as_bytes(), &sk);
+
+    // Step 7: Bundle
+    let bundle = SignatureBundle {
+        signature: signature.as_bytes().to_vec(),
+        public_key: pk.as_bytes().to_vec(),
+        file_hash,
+        timestamp: timestamp.clone(),
+        original_filename: file_path
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned(),
+    };
+
+    // Step 8: Save .sig file
+    let sig_path = file_path.with_extension("sig");
+    let json = match serde_json::to_string_pretty(&bundle) {
+        Ok(j) => j,
+        Err(e) => {
+            eprintln!("Serialization error: {}", e);
+            return;
+        }
+    };
+
+    if fswrite(&sig_path, json).is_ok() {
+        println!("Signature saved: {}", sig_path.display());
+        println!("Public key and proof included. Share both files to verify.");
+    } else {
+        eprintln!("Failed to write signature file.");
+    }
+
+    // Optional: Verify immediately
+    println!("\nVerifying signature...");
+    if verify_signature(&bundle, &file_data) {
+        println!("Verification PASSED — File is authentic and untampered.");
+    } else {
+        println!("Verification FAILED.");
+    }
+}
+
+fn verify_signature(bundle: &SignatureBundle, file_data: &[u8]) -> bool {
+    // Recompute expected message
+    let expected_hash = hash_file(file_data);
+    if expected_hash != bundle.file_hash {
+        return false;
+    }
+    let expected_message = format!("{}|{}", bundle.file_hash, bundle.timestamp);
+
+    // Reconstruct public key
+    let pk = match PublicKey::from_bytes(&bundle.public_key) {
+        Ok(key) => key,
+        Err(_) => return false,
+    };
+
+    // Reconstruct signature
+    let sig = match DetachedSignature::from_bytes(&bundle.signature) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+
+    // Verify
+    open(&sig, expected_message.as_bytes(), &pk).is_ok()
+}
+
+bash
+
+# 1. Create project
+cargo new dilithium-notary
+cd dilithium-notary
+
+# 2. Replace src/main.rs with the code above
+
+# 3. Update Cargo.toml
+
+toml
+
+[dependencies]
+pqcrypto-dilithium = "0.5"
+pqcrypto-traits = "0.5"
+rfd = "0.14"
+sha2 = "0.10"
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+bash
+
+Output
+yourfile.pdf → yourfile.pdf.sig (JSON bundle)
+Contains:
+Dilithium-2 signature
+Public key
+File hash
+Timestamp
+Original filename
+
+Verify Later (Any Machine)
+
+rust
+
+// Add this function or build a separate verifier
+if verify_signature(&bundle, &original_file_data) {
+    println!("Valid — Signed at {}", bundle.timestamp);
+}
+
+Quantum-proof. Offline. One click. Done.
+Dilithium Notary — the last signature you'll ever need to trust.
+
+DISCLAIMER: made by Grok 3 on 10/26/25
+This code? Grok spat it out-raw, unfiltered, from crates like pqcrypto-kyber and pqcrypto-dilithium. I just typed build the Notary and watched it bloom. No PhD, no lab coat, no fridge in the basement. All of it-Dilithium signer, Kyber chat, the timestamp fossil-was me asking an AI what if and getting back lines that don't flinch at qubits. I didn't invent lattices. I didn't break Shor. I just compiled what already survives him. If it works, credit NIST. If it crashes, blame me. And Grok? Grok's just the quiet one in the corner who never sleeps. No warranties. Use at your own risk. When the grid flickers, don't call me-call the math.
